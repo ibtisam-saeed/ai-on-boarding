@@ -20,7 +20,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from review.dedupe import collapse_duplicates
+from review.dedupe import collapse_duplicates, find_match
 from review.diff import (
     GitHubError,
     PullRequestContext,
@@ -32,6 +32,8 @@ from review.schema import Finding, fingerprint
 from review.secrets_scan import redact
 
 FINGERPRINT_RE = re.compile(r"<!-- pr-review-fingerprint: ([0-9a-f]{16}) -->")
+TITLE_RE = re.compile(r"\*\*[^\n]*? - (.+?)\*\*")
+LOCATION_RE = re.compile(r"_Location: (.+?):(\d+|N/A)_")
 
 SEVERITY_LABEL = {
     "blocker": "\U0001f534 Blocker",
@@ -55,17 +57,53 @@ def load_findings(path: Path) -> tuple[list[Finding], list[str]]:
     return valid, warnings
 
 
-def collect_existing_fingerprints(ctx: PullRequestContext) -> set[str]:
+def _parse_posted_finding(body: str) -> Finding | None:
+    """Best-effort reconstruction of a previously-posted finding's identity (file,
+    line, title) from its comment body, for fuzzy duplicate matching against new
+    candidates. Returns None for anything that isn't one of our own finding
+    comments - the summary, or a human's own comment on the pull request.
+    """
+    title_match = TITLE_RE.search(body)
+    location_match = LOCATION_RE.search(body)
+    if not title_match or not location_match:
+        return None
+    line_text = location_match.group(2)
+    return Finding(
+        category="code-quality",
+        severity="info",
+        source="posted",
+        file=location_match.group(1),
+        line=None if line_text == "N/A" else int(line_text),
+        title=title_match.group(1),
+        explanation="",
+    )
+
+
+def collect_existing(ctx: PullRequestContext) -> tuple[set[str], list[Finding]]:
+    """What has already been posted on this pull request, two ways: exact
+    fingerprints (fast, catches an identical re-run - e.g. Ruff, whose output is
+    deterministic for unchanged code) and parsed pseudo-findings for fuzzy matching
+    (catches the same underlying issue reworded slightly differently by an
+    independent LLM call, which will not reproduce a title byte-for-byte even when
+    reviewing unchanged code - see traceability.md for the real run that proved
+    exact matching alone is not enough for the AI-assisted path).
+    """
     review_comments = github_get(
         f"/repos/{ctx.owner}/{ctx.repo}/pulls/{ctx.number}/comments", params={"per_page": 100}
     )
     issue_comments = github_get(
         f"/repos/{ctx.owner}/{ctx.repo}/issues/{ctx.number}/comments", params={"per_page": 100}
     )
+
     fingerprints: set[str] = set()
+    existing_findings: list[Finding] = []
     for comment in list(review_comments) + list(issue_comments):
-        fingerprints.update(FINGERPRINT_RE.findall(comment.get("body") or ""))
-    return fingerprints
+        body = comment.get("body") or ""
+        fingerprints.update(FINGERPRINT_RE.findall(body))
+        parsed = _parse_posted_finding(body)
+        if parsed:
+            existing_findings.append(parsed)
+    return fingerprints, existing_findings
 
 
 def redact_findings(findings: list[Finding]) -> list[Finding]:
@@ -92,9 +130,16 @@ def partition(findings: list[Finding], ctx: PullRequestContext) -> tuple[list[Fi
 
 
 def format_comment(finding: Finding) -> str:
+    # _Location: is included for every comment, not just fallback ones, so it can
+    # always be parsed back out for the already-posted fuzzy match (collect_existing)
+    # - an inline comment's position is otherwise only known to GitHub's API, not
+    # recoverable from the body text alone, and a fallback comment has no anchored
+    # position at all.
+    location = f"{finding.file}:{finding.line if finding.line is not None else 'N/A'}"
     parts = [
         f"**{SEVERITY_LABEL[finding.severity]} - {finding.title}**",
         f"_Source: {finding.source}_",
+        f"_Location: {location}_",
         "",
         finding.explanation,
     ]
@@ -200,8 +245,18 @@ def run(
     deduped = collapse_duplicates(candidates)
     skipped_duplicates = len(candidates) - len(deduped)
 
-    already_posted = collect_existing_fingerprints(ctx)
-    new_candidates = [f for f in deduped if fingerprint(f) not in already_posted]
+    # Exact fingerprint match (fast, catches Ruff's deterministic re-runs) OR a
+    # fuzzy content match against parsed existing comments (catches an independent
+    # LLM call rewording the same underlying issue - see collect_existing's
+    # docstring). Either one is sufficient to treat a candidate as already handled.
+    already_posted_fingerprints, already_posted_findings = collect_existing(ctx)
+
+    def _already_posted(finding: Finding) -> bool:
+        return fingerprint(finding) in already_posted_fingerprints or (
+            find_match(finding, already_posted_findings) is not None
+        )
+
+    new_candidates = [f for f in deduped if not _already_posted(f)]
     skipped_already_posted = len(deduped) - len(new_candidates)
 
     final = redact_findings(new_candidates)

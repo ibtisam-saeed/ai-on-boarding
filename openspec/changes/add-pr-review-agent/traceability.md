@@ -10,7 +10,7 @@ this file exists to catch. All phases are now complete.
 |---|---|---|
 | Post each finding as its own isolated comment | `review/publish.py:post_review`, `format_comment` | `test_publish.py::test_inline_attachable_finding_is_posted_as_part_of_one_review`, `test_near_duplicate_findings_produce_only_one_comment` |
 | Fall back to a general comment for unattachable findings | `review/publish.py:partition`, `post_general_comment` | `test_publish.py::test_unattachable_finding_becomes_its_own_general_comment` |
-| Suppress duplicate findings | `review/dedupe.py:collapse_duplicates`, `review/publish.py:run` (dedupe *before* the fingerprint skip - see Notes) | `test_dedupe.py` (all), `test_publish.py::test_already_posted_finding_is_not_reposted`, `test_nothing_to_post_when_all_findings_are_already_posted`, `test_near_duplicate_findings_produce_only_one_comment`, `test_collapsed_duplicates_losing_side_is_not_reposted_on_a_later_run` |
+| Suppress duplicate findings | `review/dedupe.py:collapse_duplicates`/`find_match`, `review/publish.py:run` (dedupe before the already-posted check, which combines an exact fingerprint match with `find_match` against parsed existing comments - see Notes) | `test_dedupe.py` (all), `test_publish.py::test_already_posted_finding_is_not_reposted`, `test_nothing_to_post_when_all_findings_are_already_posted`, `test_near_duplicate_findings_produce_only_one_comment`, `test_collapsed_duplicates_losing_side_is_not_reposted_on_a_later_run`, `test_reworded_finding_from_an_independent_run_is_not_reposted` |
 | Never disclose secret values in a finding | `review/secrets_scan.py:redact`, `review/publish.py:redact_findings` | `test_secrets_scan.py` (all), `test_publish.py::test_secret_value_in_a_finding_is_redacted_before_posting` |
 | Run deterministic lint checks on every pull request | `.github/workflows/ruff.yml` (the `ruff` job; final step fails the check based on Ruff's real exit code) | No pytest test - a workflow's trigger/pass-fail behaviour isn't unit-testable. Verified via `actionlint` and task 6's manual verification against a real pull request. |
 | Post lint violations as inline comments | `review/ruff_adapter.py:convert` (feeds the same `review/publish.py` pipeline as the rows above) | `test_ruff_adapter.py` (all) |
@@ -64,3 +64,21 @@ this file exists to catch. All phases are now complete.
   changed Python files (via `gh pr diff --name-only`) before running it, so `publish.py`'s
   fallback path is only ever exercised for its intended case - a touched file, an untouched line -
   not "file the PR never touched at all."
+- **Bug found during Phase 3's real manual verification** (task 10.3/10.4, real PR #5 on
+  `ibtisam-saeed/ai-on-boarding`): a second `@claude review this` with no code change reposted all
+  four findings instead of recognising them as already posted. Cause: `collect_existing_fingerprints`
+  only matched an *exact* fingerprint (`file|line|category|title`), which works for deterministic
+  sources (hand-written JSON, Ruff) but not for LLM-generated findings - an independent subagent
+  call reviewing unchanged code reworded its titles slightly (e.g. "Hardcoded API key literal
+  committed as a module-level constant" became "Hardcoded API key committed as a module-level
+  constant" on the second run), so the exact hash never matched. Confirmed via `difflib`
+  similarity on the real observed title pairs (0.93, 0.73, 0.68, 0.67 - all comfortably above the
+  existing 0.6 dedupe threshold) that the fix didn't need a new threshold, only a new comparison:
+  fixed by adding `dedupe.find_match` (reusing `collapse_duplicates`'s same location+similarity
+  heuristic) and running it against pseudo-findings reconstructed from existing comment bodies
+  (`publish.py:collect_existing`), in addition to - not instead of - the exact fingerprint check.
+  `format_comment` now embeds `_Location: {file}:{line}` in every comment (previously only
+  inferable for inline comments via GitHub's own `path`/`line` fields, never recoverable at all
+  for fallback comments) so this reconstruction works for both. See
+  `test_reworded_finding_from_an_independent_run_is_not_reposted`, which uses the real observed
+  title wording from PR #5 and was confirmed red against fingerprint-only matching before the fix.

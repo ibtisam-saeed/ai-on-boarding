@@ -126,6 +126,45 @@ def test_already_posted_finding_is_not_reposted(tmp_path, fake_github):
     ]
 
 
+def test_reworded_finding_from_an_independent_run_is_not_reposted(tmp_path, fake_github):
+    """Regression test for a real bug found on a real pull request (PR #5 on
+    ibtisam-saeed/ai-on-boarding, Phase 3's manual verification): an independent LLM
+    call reviewing unchanged code reworded its findings' titles slightly on a second
+    run, so the exact-fingerprint check alone did not recognise them as already
+    posted, and reposted all four. Titles below are the real observed wording from
+    that run (first vs. second call), not fabricated for this test.
+    """
+    fake_github.files = [
+        {"filename": "a.py", "patch": "@@ -1,1 +1,1 @@\n line1"},
+    ]
+    first_run_finding = Finding(
+        category="security", severity="major", file="a.py", line=1,
+        title="Hardcoded API key literal committed as a module-level constant",
+        explanation="explains it", source="security-review",
+    )
+    path = _write_findings(tmp_path, [first_run_finding])
+    publish_module.run("owner/repo", 1, path)
+    assert len(fake_github.posted_reviews) == 1
+
+    # Simulate GitHub now carrying what was just posted, as a second run would see it.
+    fake_github.review_comments = [
+        {"path": "a.py", "line": 1, "body": c["body"]}
+        for c in fake_github.posted_reviews[0]["comments"]
+    ]
+
+    second_run_finding = Finding(
+        category="security", severity="major", file="a.py", line=1,
+        title="Hardcoded API key committed as a module-level constant",  # reworded
+        explanation="explains it, worded slightly differently", source="security-review",
+    )
+    path2 = _write_findings(tmp_path, [second_run_finding])
+
+    result = publish_module.run("owner/repo", 1, path2)
+
+    assert result == 0
+    assert len(fake_github.posted_reviews) == 1  # no second review posted
+
+
 def test_near_duplicate_findings_produce_only_one_comment(tmp_path, fake_github):
     fake_github.files = [{"filename": "a.py", "patch": "@@ -1,1 +1,1 @@\n line1"}]
     a = Finding(

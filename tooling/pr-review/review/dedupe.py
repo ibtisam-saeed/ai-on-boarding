@@ -1,6 +1,11 @@
-"""Collapses findings from different sources that describe the same underlying issue,
-within a single batch of candidate findings (not yet-posted ones - see publish.py for
-that, which fingerprints against what is already on the pull request).
+"""Collapses findings that describe the same underlying issue - both within a single
+batch of new candidates (`collapse_duplicates`) and against what a pull request
+already carries (`find_match`, used by publish.py's already-posted check). The same
+location+title-similarity heuristic serves both: a second, independent LLM call
+reviewing unchanged code will not reproduce a finding's title byte-for-byte, so
+publish.py cannot rely on exact identity alone once findings come from a model
+rather than a deterministic tool like Ruff - see openspec/changes/
+add-pr-review-agent/traceability.md for the real run that proved this.
 
 See openspec/changes/add-pr-review-agent/design.md - Decision 5 and the "Risks" entry
 on this heuristic needing validation against real examples before it is trusted.
@@ -25,6 +30,21 @@ def _same_location(a: Finding, b: Finding) -> bool:
     if a.line is None or b.line is None:
         return a.line == b.line
     return abs(a.line - b.line) <= LINE_WINDOW
+
+
+def find_match(candidate: Finding, pool: list[Finding]) -> Finding | None:
+    """The first finding in `pool` that appears to describe the same underlying
+    issue as `candidate` (same location, similar title), or None. Used against
+    already-posted findings reconstructed from a pull request's existing comments -
+    unlike `collapse_duplicates`, there is no "survivor" to pick here, since an
+    already-posted finding always wins: the candidate is simply not reposted.
+    """
+    for other in pool:
+        if _same_location(candidate, other) and (
+            _title_similarity(candidate.title, other.title) >= TITLE_SIMILARITY_THRESHOLD
+        ):
+            return other
+    return None
 
 
 def _pick_survivor(a: Finding, b: Finding) -> tuple[Finding, Finding]:
