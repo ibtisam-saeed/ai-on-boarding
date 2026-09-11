@@ -29,9 +29,25 @@
 #
 # The orchestrator (this action's Claude Code session) decides which review
 # skills apply, dispatches them as subagents, and hands their findings to
-# tooling/pr-review/review/publish.py - the only thing that ever posts to GitHub.
-# --allowedTools restricts the orchestrator's own tools so it cannot post
-# anything by any other means.
+# tooling/pr-review/review/publish.py - the only thing that is ever meant to post
+# findings to GitHub. IMPORTANT, learned from a real run's logged SDK options, not
+# assumed: claude-code-action MERGES --allowedTools with its own platform defaults
+# rather than replacing them - the orchestrator's *actual* tool list also includes
+# Bash(git add/commit/push/rm) and mcp__github_comment__update_claude_comment, none
+# of which this workflow grants deliberately. The four review SUBAGENTS remain
+# correctly restricted regardless (their `tools:` frontmatter is a separate,
+# independently-enforced mechanism, not affected by this) - it is specifically the
+# orchestrator's own restriction that is weaker than a first read of this file
+# would suggest. orchestrator_prompt.md instructs it not to use the git-write
+# tools or duplicate finding content in its own tracking comment, but that is a
+# prompted convention here, not a structural guarantee the way subagent isolation
+# is - see openspec/changes/add-pr-review-agent/traceability.md.
+#
+# --allowedTools also explicitly grants Bash(gh pr diff:*) - read-only, needed
+# because orchestrator_prompt.md instructs the orchestrator to use it to determine
+# a pull request's changed files. A real run without this grant burned its turns
+# on repeated denied attempts (permission_denials_count: 6 in that run's result)
+# and never reached publish.py at all - see traceability.md for the full story.
 #
 # IMPORTANT: .claude/agents/ and .claude/skills/ are read from the pull request's
 # BASE branch, not the PR's own branch (a PR cannot smuggle in different
@@ -90,5 +106,5 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           trigger_phrase: "@claude"
           claude_args: |
-            --allowedTools "Read,Grep,Glob,Task,Bash(python -m review.publish:*)"
+            --allowedTools "Read,Grep,Glob,Task,Bash(gh pr diff:*),Bash(python -m review.publish:*)"
             --append-system-prompt "Read tooling/pr-review/orchestrator_prompt.md now, in full, and follow it exactly for the rest of this session before doing anything else."

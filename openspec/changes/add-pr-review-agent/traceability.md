@@ -82,3 +82,22 @@ this file exists to catch. All phases are now complete.
   for fallback comments) so this reconstruction works for both. See
   `test_reworded_finding_from_an_independent_run_is_not_reposted`, which uses the real observed
   title wording from PR #5 and was confirmed red against fingerprint-only matching before the fix.
+- **Second, structural finding from the same real PR #5 run**: a subsequent `@claude review this
+  PR` posted nothing at all - not even the always-on summary. The run's logged SDK options showed
+  the actual `allowedTools` granted was `[Glob, Grep, LS, Read, mcp__github_comment__
+  update_claude_comment, mcp__github_ci__*, Bash(git add/commit/push/rm), Task,
+  Bash(python -m review.publish:*)]` - claude-code-action MERGES `--allowedTools` with its own
+  platform defaults rather than replacing them, so the orchestrator's real tool list included git
+  write access and its own tracking-comment editor, neither of which `claude-pr-review.yml`
+  granted deliberately. The result also reported `"permission_denials_count": 6` with real cost
+  and 19 turns spent, never reaching `publish.py`: `orchestrator_prompt.md` step 1 instructed
+  `gh pr diff <n> --name-only` to find changed files, but the workflow never granted `gh` access
+  at all - only `Bash(python -m review.publish:*)`. Fixed by adding
+  `Bash(gh pr diff:*)` (read-only) to `claude-pr-review.yml`'s `--allowedTools`, and by adding an
+  explicit "do not use the git-write or comment-editing tools, even though you may have them"
+  instruction to `orchestrator_prompt.md`, since - unlike subagent tool restriction, which is a
+  separate, independently-enforced mechanism via each agent's own `tools:` frontmatter and is
+  unaffected by this - the orchestrator's own restriction is a prompted convention here, not a
+  structural guarantee. Worth being explicit that this is a real, if narrow, gap relative to how
+  the design was described before this run: see the header comment in `claude-pr-review.yml` for
+  the corrected description.
