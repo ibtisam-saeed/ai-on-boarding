@@ -1,0 +1,66 @@
+# Deterministic lint check, run automatically on every pull request - no model call
+# involved. Also posts non-autofixable violations as individual inline PR comments
+# via the same publishing pipeline the Claude-assisted review (Phase 3) uses, so
+# duplicate detection and idempotency behave identically regardless of source.
+#
+# See openspec/changes/add-pr-review-agent/design.md - Decision 4, and the spec's
+# "Run deterministic lint checks on every pull request" / "Post lint violations as
+# inline comments" requirements.
+
+name: Ruff
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install ruff==0.16.7
+          pip install -r tooling/pr-review/requirements.txt
+
+      # Never fails the step itself - the run must still produce findings to
+      # publish even when (especially when) Ruff finds something. The job's
+      # actual pass/fail verdict is decided by the last step, from this step's
+      # real outcome.
+      - name: Run Ruff
+        id: ruff
+        continue-on-error: true
+        run: ruff check sdd_django_demo --output-format json > ruff-output.json
+
+      - name: Convert violations to findings
+        working-directory: tooling/pr-review
+        run: |
+          python -m review.ruff_adapter \
+            --input ../../ruff-output.json \
+            --repo-root ../.. \
+            --out ruff-findings.json
+
+      - name: Publish findings to the pull request
+        working-directory: tooling/pr-review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          python -m review.publish \
+            --pr "$PR_NUMBER" \
+            --repo "$REPO" \
+            --input ruff-findings.json
+
+      - name: Fail the check if Ruff found violations
+        if: steps.ruff.outcome == 'failure'
+        run: exit 1

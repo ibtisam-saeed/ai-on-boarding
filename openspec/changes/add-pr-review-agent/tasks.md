@@ -63,25 +63,29 @@ phase's implementation tasks in the same run.
 
 ## 4. Phase 2 - Ruff CI integration
 
-- [ ] 4.1 Add a Ruff configuration scoped to `sdd_django_demo/` (the only Python application code
+- [x] 4.1 Add a Ruff configuration scoped to `sdd_django_demo/` (the only Python application code
       in this repo) and verify `ruff check sdd_django_demo` runs and reports a result
-- [ ] 4.2 Implement `review/ruff_adapter.py`: convert `ruff check --output-format json` output
+      (`sdd_django_demo/ruff.toml`; migrations excluded; calibrated against the real codebase -
+      14 violations, 3 safely auto-fixable, with Ruff's own default rule set)
+- [x] 4.2 Implement `review/ruff_adapter.py`: convert `ruff check --output-format json` output
       into `Finding` objects (category `code-quality`, source `ruff`), skipping any violation
       marked safely auto-fixable; verify against a sample Ruff JSON fixture containing both
       autofixable and non-autofixable violations
-- [ ] 4.3 Add `.github/workflows/ruff.yml`: on `pull_request`, install dependencies, run
+- [x] 4.3 Add `.github/workflows/ruff.yml`: on `pull_request`, install dependencies, run
       `ruff check --output-format json`, run `ruff_adapter.py`, then call `publish.py` with the
       result; grant the workflow's token `pull-requests: write`; verify the workflow YAML is
-      valid and its steps succeed in a local dry run where feasible
+      valid and its steps succeed in a local dry run where feasible (also grants `issues: write`,
+      needed by `publish.py`'s fallback/summary posting; validated with `actionlint`, and the
+      Ruff-to-findings conversion dry-run locally against the real codebase's real violations)
 
 ## 5. Phase 2 - Tests
 
-- [ ] 5.1 List the pr-review spec requirements this phase covers (automatic lint check on every
+- [x] 5.1 List the pr-review spec requirements this phase covers (automatic lint check on every
       pull request, posting non-autofixable violations as inline comments, autofixable
       violations not posted)
-- [ ] 5.2 Write `review/tests/test_ruff_adapter.py` from that list; verify
+- [x] 5.2 Write `review/tests/test_ruff_adapter.py` from that list; verify
       `pytest tooling/pr-review/review/tests -q` still passes
-- [ ] 5.3 Break the autofixable-skip logic on purpose, confirm the relevant test goes red, then
+- [x] 5.3 Break the autofixable-skip logic on purpose, confirm the relevant test goes red, then
       restore it, and verify the suite is green again
 
 ## 6. Phase 2 - Manual verification (STOP - confirm before starting Phase 3)
