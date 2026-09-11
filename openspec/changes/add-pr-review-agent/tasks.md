@@ -96,14 +96,18 @@ phase's implementation tasks in the same run.
 
 ## 6. Phase 2 - Manual verification (STOP - confirm before starting Phase 3)
 
-- [ ] 6.1 Open or update a real test pull request with at least one deliberate non-autofixable
+- [x] 6.1 Open or update a real test pull request with at least one deliberate non-autofixable
       Ruff violation and one autofixable violation - to be performed and confirmed by the user,
-      not checked off automatically
-- [ ] 6.2 Confirm: the Ruff CI check runs automatically and reports the correct pass/fail status,
+      not checked off automatically (confirmed against
+      https://github.com/ibtisam-saeed/ai-on-boarding/pull/4)
+- [x] 6.2 Confirm: the Ruff CI check runs automatically and reports the correct pass/fail status,
       an inline comment appears for the non-autofixable violation on the correct line, no comment
       appears for the autofixable violation, and pushing an additional commit without fixing the
       violation does not duplicate the existing comment - to be confirmed by the user, not
-      checked off automatically
+      checked off automatically (confirmed - initial run posted exactly 1 inline comment on the
+      correct line for RUF012, none for the autofixable I001, and correctly failed the check;
+      a re-run with no code change reported "Nothing to post - 1 already posted", confirming
+      idempotency; user confirmed the summary comment's content)
 
 ## 7. Phase 3 - Skills and subagents
 
