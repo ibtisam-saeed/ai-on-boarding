@@ -32,6 +32,22 @@ jobs:
           pip install ruff==0.16.7
           pip install -r tooling/pr-review/requirements.txt
 
+      # Scoped to what this PR actually changed, not the whole directory - this repo
+      # already has pre-existing violations elsewhere in sdd_django_demo, and a
+      # whole-directory scan would report all of them as unattachable (fallback)
+      # comments on every PR, regardless of what it touches. `gh pr diff --name-only`
+      # is the PR's real file list, so this can't disagree with what diff.py later
+      # resolves positions against.
+      - name: Determine changed Python files
+        id: changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr diff "$PR_NUMBER" --name-only \
+            | grep '^sdd_django_demo/.*\.py$' \
+            > changed_files.txt || true
+
       # Never fails the step itself - the run must still produce findings to
       # publish even when (especially when) Ruff finds something. The job's
       # actual pass/fail verdict is decided by the last step, from this step's
@@ -39,7 +55,14 @@ jobs:
       - name: Run Ruff
         id: ruff
         continue-on-error: true
-        run: ruff check sdd_django_demo --output-format json > ruff-output.json
+        run: |
+          if [ -s changed_files.txt ]; then
+            tr '\n' '\0' < changed_files.txt \
+              | xargs -0 ruff check --output-format json \
+              > ruff-output.json
+          else
+            echo "[]" > ruff-output.json
+          fi
 
       - name: Convert violations to findings
         working-directory: tooling/pr-review

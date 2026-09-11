@@ -34,3 +34,10 @@ no code, which is exactly the gap this file exists to catch.
   and was posted fresh, as if new. Fixed by deduping first, then checking the survivor's
   fingerprint - see `test_collapsed_duplicates_losing_side_is_not_reposted_on_a_later_run`, which
   reproduces the exact scenario and was confirmed red against the original ordering before the fix.
+- **Scope correction found while setting up Phase 2's manual verification** (task 6): the first
+  version of `ruff.yml` ran `ruff check sdd_django_demo` unscoped - since this repo already has 14
+  pre-existing violations, every PR (regardless of what it touched) would have produced roughly
+  10 fallback general comments about unrelated code. Fixed by scoping Ruff to the PR's actual
+  changed Python files (via `gh pr diff --name-only`) before running it, so `publish.py`'s
+  fallback path is only ever exercised for its intended case - a touched file, an untouched line -
+  not "file the PR never touched at all."

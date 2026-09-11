@@ -76,7 +76,13 @@ phase's implementation tasks in the same run.
       result; grant the workflow's token `pull-requests: write`; verify the workflow YAML is
       valid and its steps succeed in a local dry run where feasible (also grants `issues: write`,
       needed by `publish.py`'s fallback/summary posting; validated with `actionlint`, and the
-      Ruff-to-findings conversion dry-run locally against the real codebase's real violations)
+      Ruff-to-findings conversion dry-run locally against the real codebase's real violations).
+      Scoped to the PR's changed Python files under `sdd_django_demo/` (via
+      `gh pr diff --name-only`), not the whole directory - found while setting up task 6's
+      manual verification: a whole-directory scan would report this repo's 14 pre-existing
+      violations as unattachable (fallback) comments on every PR regardless of what it touches.
+      Shell logic (null-delimited `xargs -0`, portable across BSD/GNU) verified locally against
+      both an empty and a non-empty changed-files case before relying on it in CI.
 
 ## 5. Phase 2 - Tests
 
