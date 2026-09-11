@@ -1,0 +1,49 @@
+[
+  {
+    "cell": null,
+    "code": "I001",
+    "end_location": {"column": 2, "row": 27},
+    "filename": "/repo/sdd_django_demo/api/views.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [{"content": "", "end_location": {"column": 1, "row": 29}, "location": {"column": 1, "row": 1}}],
+      "message": "Organize imports"
+    },
+    "location": {"column": 1, "row": 1},
+    "message": "Import block is un-sorted or un-formatted",
+    "name": "unsorted-imports",
+    "noqa_row": 1,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
+  },
+  {
+    "cell": null,
+    "code": "RUF012",
+    "end_location": {"column": 51, "row": 40},
+    "filename": "/repo/sdd_django_demo/api/mcp_views.py",
+    "fix": null,
+    "location": {"column": 30, "row": 40},
+    "message": "Mutable default value for class attribute",
+    "name": "mutable-class-default",
+    "noqa_row": 40,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/mutable-class-default"
+  },
+  {
+    "cell": null,
+    "code": "F841",
+    "end_location": {"column": 12, "row": 72},
+    "filename": "/repo/sdd_django_demo/api/test_user_management.py",
+    "fix": {
+      "applicability": "unsafe",
+      "edits": [{"content": "", "end_location": {"column": 1, "row": 73}, "location": {"column": 1, "row": 72}}],
+      "message": "Remove assignment"
+    },
+    "location": {"column": 5, "row": 72},
+    "message": "Local variable `account` is assigned to but never used",
+    "name": "unused-variable",
+    "noqa_row": 72,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+  }
+]

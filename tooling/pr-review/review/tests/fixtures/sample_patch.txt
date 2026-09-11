@@ -1,0 +1,8 @@
+@@ -10,6 +10,7 @@ def foo():
+ line_a
+ line_b
+-old_line
++new_line_1
++new_line_2
+ line_c
+ line_d

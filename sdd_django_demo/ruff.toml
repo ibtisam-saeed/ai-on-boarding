@@ -1,0 +1,10 @@
+# Scoped to this directory by location: this repo also contains unrelated
+# course/reference material (glossary.md, reference/, starter/) at the repo root
+# that isn't part of the Django project and shouldn't be linted - see
+# openspec/config.yaml's context. Ruff discovers the nearest config walking up
+# from the files it's given, so this file only ever applies to what's under
+# sdd_django_demo/, matching how sdd_django_demo/pytest.ini is already scoped.
+target-version = "py312"
+line-length = 100
+
+extend-exclude = ["migrations"]

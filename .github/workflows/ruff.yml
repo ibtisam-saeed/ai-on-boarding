@@ -1,0 +1,89 @@
+# Deterministic lint check, run automatically on every pull request - no model call
+# involved. Also posts non-autofixable violations as individual inline PR comments
+# via the same publishing pipeline the Claude-assisted review (Phase 3) uses, so
+# duplicate detection and idempotency behave identically regardless of source.
+#
+# See openspec/changes/add-pr-review-agent/design.md - Decision 4, and the spec's
+# "Run deterministic lint checks on every pull request" / "Post lint violations as
+# inline comments" requirements.
+
+name: Ruff
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install ruff==0.16.7
+          pip install -r tooling/pr-review/requirements.txt
+
+      # Scoped to what this PR actually changed, not the whole directory - this repo
+      # already has pre-existing violations elsewhere in sdd_django_demo, and a
+      # whole-directory scan would report all of them as unattachable (fallback)
+      # comments on every PR, regardless of what it touches. `gh pr diff --name-only`
+      # is the PR's real file list, so this can't disagree with what diff.py later
+      # resolves positions against.
+      - name: Determine changed Python files
+        id: changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr diff "$PR_NUMBER" --name-only \
+            | grep '^sdd_django_demo/.*\.py$' \
+            > changed_files.txt || true
+
+      # Never fails the step itself - the run must still produce findings to
+      # publish even when (especially when) Ruff finds something. The job's
+      # actual pass/fail verdict is decided by the last step, from this step's
+      # real outcome.
+      - name: Run Ruff
+        id: ruff
+        continue-on-error: true
+        run: |
+          if [ -s changed_files.txt ]; then
+            tr '\n' '\0' < changed_files.txt \
+              | xargs -0 ruff check --output-format json \
+              > ruff-output.json
+          else
+            echo "[]" > ruff-output.json
+          fi
+
+      - name: Convert violations to findings
+        working-directory: tooling/pr-review
+        run: |
+          python -m review.ruff_adapter \
+            --input ../../ruff-output.json \
+            --repo-root ../.. \
+            --out ruff-findings.json
+
+      - name: Publish findings to the pull request
+        working-directory: tooling/pr-review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          python -m review.publish \
+            --pr "$PR_NUMBER" \
+            --repo "$REPO" \
+            --input ruff-findings.json
+
+      - name: Fail the check if Ruff found violations
+        if: steps.ruff.outcome == 'failure'
+        run: exit 1

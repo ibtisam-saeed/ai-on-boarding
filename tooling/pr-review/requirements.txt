@@ -1,0 +1,6 @@
+# CI-only tooling for the PR review publishing pipeline. These are NOT runtime
+# dependencies of the Django project - sdd_django_demo/requirements.txt is
+# unchanged by this tooling.
+pydantic==2.13.5
+requests==2.33.0
+pytest==9.1.1
