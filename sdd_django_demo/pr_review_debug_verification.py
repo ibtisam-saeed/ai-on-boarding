@@ -32,3 +32,12 @@ def process(x):
     # discount-adjusted total. Ruff has no rule for unclear naming.
     y = x * 0.9 if x > 100 else x
     return y
+
+
+def _unused_local_for_ruff_coexistence_check(x):
+    # planted: Ruff (F841, not safely autofixable) - for task 10.5's manual
+    # verification that Ruff-sourced and Claude-sourced comments coexist on the
+    # same pull request without duplicating each other. Deliberately not something
+    # any review skill's checklist covers.
+    unused = x * 2
+    return x
